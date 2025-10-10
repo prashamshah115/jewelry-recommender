@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Testing Supabase Connection</h1>
+    <div id="result"></div>
+    
+    <script>
+        const supabaseUrl = 'https://reecfmvwsimswxdmyuqh.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlZWNmbXZ3c2ltc3d4ZG15dXFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk5NTA0MzQsImV4cCI6MjA3NTUyNjQzNH0.t2zQipbxcWm_DzTUOu2APi448jKpQHWId7JePDHU000';
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+        const result = document.getElementById('result');
+        
+        async function testConnection() {
+            try {
+                result.innerHTML += '<p>Testing connection...</p>';
+                
+                // Check if tables exist
+                const { data, error } = await supabase.from('allowed_users').select('email').limit(1);
+                
+                if (error) {
+                    result.innerHTML += `<p style="color: red;">❌ Error: ${error.message}</p>`;
+                    result.innerHTML += '<p><strong>Action needed:</strong> Run supabase-schema.sql in Supabase SQL Editor</p>';
+                } else {
+                    result.innerHTML += '<p style="color: green;">✅ Database connected!</p>';
+                    result.innerHTML += `<p>Whitelisted users: ${data.length}</p>`;
+                    if (data.length === 0) {
+                        result.innerHTML += '<p style="color: orange;">⚠️ No whitelisted users found. Add your email!</p>';
+                    }
+                }
+            } catch (err) {
+                result.innerHTML += `<p style="color: red;">❌ Error: ${err.message}</p>`;
+            }
+        }
+        
+        testConnection();
+    </script>
+</body>
+</html>
+
