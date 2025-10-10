@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { useTextbook } from './TextbookContext';
 import { toast } from 'sonner';
+import { fetchWithRetry } from '../lib/fetchWithRetry';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -15,6 +16,7 @@ interface ChatContextType {
   loading: boolean;
   sendMessage: (content: string) => Promise<void>;
   clearChat: () => Promise<void>;
+  currentContext: string | null;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -25,6 +27,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [currentContext, setCurrentContext] = useState<string | null>(null);
 
   // Load existing conversation
   const loadConversation = async () => {
@@ -70,6 +73,75 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Build rich context from multiple sources
+  const buildRichContext = async () => {
+    const context: any = {
+      currentPage: currentPage,
+      currentPageText: currentPageData?.raw_text || '',
+    };
+
+    try {
+      // Get neighboring pages for broader context
+      const [prevPageResult, nextPageResult] = await Promise.all([
+        supabase
+          .from('pages')
+          .select('raw_text')
+          .eq('textbook_id', currentTextbook!.id)
+          .eq('page_number', currentPage - 1)
+          .maybeSingle(),
+        supabase
+          .from('pages')
+          .select('raw_text')
+          .eq('textbook_id', currentTextbook!.id)
+          .eq('page_number', currentPage + 1)
+          .maybeSingle(),
+      ]);
+
+      if (prevPageResult.data) {
+        context.previousPageText = prevPageResult.data.raw_text?.substring(0, 500);
+      }
+      if (nextPageResult.data) {
+        context.nextPageText = nextPageResult.data.raw_text?.substring(0, 500);
+      }
+
+      // Get chapter summary
+      const { data: chapter } = await supabase
+        .from('chapters')
+        .select('chapter_summaries(*)')
+        .eq('textbook_id', currentTextbook!.id)
+        .lte('page_start', currentPage)
+        .gte('page_end', currentPage)
+        .maybeSingle();
+      
+      if (chapter?.chapter_summaries?.[0]) {
+        context.chapterSummary = chapter.chapter_summaries[0].summary_text;
+      }
+
+      // Get user notes for this page
+      const { data: notes } = await supabase
+        .from('user_notes')
+        .select('content')
+        .eq('textbook_id', currentTextbook!.id)
+        .eq('page_number', currentPage);
+
+      if (notes && notes.length > 0) {
+        context.userNotes = notes.map(n => n.content).join('\n\n');
+      }
+
+      // Get AI-generated content if available
+      if (currentAIContent) {
+        context.aiInsights = {
+          applications: currentAIContent.applications,
+          keyConcepts: currentAIContent.key_concepts,
+        };
+      }
+    } catch (error) {
+      console.error('[Chat] Error building context:', error);
+    }
+
+    return context;
+  };
+
   // Send message and get AI response
   const sendMessage = async (content: string) => {
     if (!user || !currentTextbook || !conversationId) return;
@@ -85,23 +157,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setLoading(true);
 
     try {
-      // Get chapter summary for enhanced context
-      let chapterSummary = '';
-      try {
-        const { data: chapter } = await supabase
-          .from('chapters')
-          .select('chapter_summaries(*)')
-          .eq('textbook_id', currentTextbook.id)
-          .lte('page_start', currentPage)
-          .gte('page_end', currentPage)
-          .single();
-        
-        if (chapter?.chapter_summaries?.[0]) {
-          chapterSummary = chapter.chapter_summaries[0].summary_text;
-        }
-      } catch (e) {
-        console.log('[Chat] No chapter summary available');
-      }
+      // Build rich context from multiple sources
+      const richContext = await buildRichContext();
+
+      // Store context for viewer
+      setCurrentContext(JSON.stringify(richContext, null, 2));
 
       // Call chat API with full context
       const response = await fetch('/api/chat', {
@@ -111,11 +171,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         },
         body: JSON.stringify({
           message: content,
-          context: {
-            pageText: currentPageData?.raw_text || '',
-            summary: chapterSummary,
-            page: currentPage,
-          },
+          context: richContext,
           conversationId,
         }),
       });
@@ -194,6 +250,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         loading,
         sendMessage,
         clearChat,
+        currentContext,
       }}
     >
       {children}

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
 import type { UploadMetadata } from '../components/UploadDialog';
+import { fetchWithRetry } from '../lib/fetchWithRetry';
 
 interface Page {
   id: string;
@@ -37,10 +38,12 @@ interface TextbookContextType {
   currentTextbook: Textbook | null;
   textbooks: Textbook[];
   currentPage: number;
+  actualPageCount: number | null;
   currentPageData: Page | null;
   currentAIContent: AIContent | null;
   loading: boolean;
   setCurrentPage: (page: number) => void;
+  setActualPageCount: (count: number) => void;
   loadTextbook: (textbookId: string) => Promise<void>;
   loadTextbooks: () => Promise<void>;
   uploadTextbook: (file: File, metadata: UploadMetadata, onProgress?: (progress: number, stage: string) => void) => Promise<string>;
@@ -55,16 +58,52 @@ export function TextbookProvider({ children }: { children: ReactNode }) {
   const [currentTextbook, setCurrentTextbook] = useState<Textbook | null>(null);
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [actualPageCount, setActualPageCount] = useState<number | null>(null);
   const [currentPageData, setCurrentPageData] = useState<Page | null>(null);
   const [currentAIContent, setCurrentAIContent] = useState<AIContent | null>(null);
   const [loading, setLoading] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper: Ensure we have a valid session before making queries
+  const ensureValidSession = async (): Promise<boolean> => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error || !session) {
+        console.warn('[Session] No valid session found');
+        return false;
+      }
+      
+      // Check if token is about to expire (within 60 seconds)
+      const expiresAt = session.expires_at;
+      if (expiresAt && expiresAt * 1000 - Date.now() < 60000) {
+        console.log('[Session] Token expiring soon, refreshing...');
+        const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !newSession) {
+          console.error('[Session] Failed to refresh:', refreshError);
+          return false;
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[Session] Error checking session:', error);
+      return false;
+    }
+  };
 
   // Load user's textbooks
   const loadTextbooks = async () => {
     if (!user) return;
 
     try {
+      // Ensure valid session
+      const hasValidSession = await ensureValidSession();
+      if (!hasValidSession) {
+        toast.error('Session expired. Please refresh the page.');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('textbooks')
         .select('*')
@@ -80,32 +119,62 @@ export function TextbookProvider({ children }: { children: ReactNode }) {
   };
 
   // Load a specific textbook
-  const loadTextbook = async (textbookId: string) => {
+  const loadTextbook = async (textbookId: string, retryCount = 0) => {
     try {
       setLoading(true);
+      
+      // Ensure valid session
+      const hasValidSession = await ensureValidSession();
+      if (!hasValidSession) {
+        toast.error('Session expired. Please refresh the page.');
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('textbooks')
         .select('*')
         .eq('id', textbookId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Check if it's a 406 or auth error and retry once
+        if (retryCount === 0 && (error.code === '406' || error.message?.includes('JWT'))) {
+          console.log('[Textbook] Auth error detected, refreshing session and retrying...');
+          await supabase.auth.refreshSession();
+          return loadTextbook(textbookId, 1);
+        }
+        throw error;
+      }
+      
       setCurrentTextbook(data);
       setCurrentPage(1);
     } catch (error) {
       console.error('[Textbook] Failed to load textbook:', error);
+      setCurrentTextbook(null);
       toast.error('Failed to load textbook');
     } finally {
       setLoading(false);
     }
   };
 
-  // Load page data and AI content
-  const loadPageData = async () => {
+  // Load page data and AI content with retry logic
+  const loadPageData = async (retryCount = 0) => {
     if (!currentTextbook) return;
 
     try {
       setLoading(true);
+
+      // FIX #1: Ensure valid session before querying
+      const hasValidSession = await ensureValidSession();
+      if (!hasValidSession) {
+        // Session is truly gone, can't proceed
+        toast.error('Session expired. Please refresh the page.');
+        setCurrentPageData(null);
+        setCurrentAIContent(null);
+        setLoading(false);
+        return;
+      }
 
       // Get page data
       const { data: pageData, error: pageError } = await supabase
@@ -115,7 +184,18 @@ export function TextbookProvider({ children }: { children: ReactNode }) {
         .eq('page_number', currentPage)
         .single();
 
-      if (pageError) throw pageError;
+      if (pageError) {
+        // FIX #2: Retry logic for 406 errors (session timeout)
+        if (retryCount === 0 && (pageError.code === '406' || pageError.message?.includes('JWT'))) {
+          console.log('[PageData] Auth error detected, refreshing session and retrying...');
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError) {
+            return loadPageData(1); // Retry once with fresh token
+          }
+        }
+        throw pageError;
+      }
+      
       setCurrentPageData(pageData);
 
       // Get AI content for this page
@@ -133,10 +213,20 @@ export function TextbookProvider({ children }: { children: ReactNode }) {
 
         setCurrentAIContent(aiData || null);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // FIX #3: Better error handling - always clear stale data
       console.error('[Textbook] Failed to load page data:', error);
-      toast.error('Failed to load page');
+      setCurrentPageData(null);
+      setCurrentAIContent(null);
+      
+      // Provide helpful error message
+      if (error.code === '406' || error.message?.includes('JWT')) {
+        toast.error('Session expired. Please refresh the page.');
+      } else {
+        toast.error('Failed to load page. Please try again.');
+      }
     } finally {
+      // FIX #3: Always clear loading state
       setLoading(false);
     }
   };
@@ -244,66 +334,95 @@ export function TextbookProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Background processing function - NOW SERVER-SIDE (FAST!)
+  // Background processing function - Triggers Railway extraction service
   const processTextbookInBackground = async (textbookId: string, filePath: string) => {
     try {
-      console.log('[Background] Starting SERVER-SIDE text extraction for:', textbookId);
+      console.log('[Background] Triggering Railway extraction for:', textbookId);
       
-      // Call server-side extraction endpoint
-      const response = await fetch('/api/extract-pdf-text', {
+      // Get PDF URL from Supabase Storage
+      const { data: urlData } = supabase.storage
+        .from('textbook-pdfs')
+        .getPublicUrl(filePath);
+      
+      const pdfUrl = urlData.publicUrl;
+      
+      // Trigger Railway extraction (fire-and-forget)
+      // Note: This is async but we don't wait for completion
+      fetch('/api/trigger-extraction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           textbookId,
-          filePath 
+          pdfUrl 
         }),
+      }).then(async (response) => {
+        if (response.ok) {
+          console.log('[Background] Railway extraction triggered successfully');
+          toast.info('Text extraction started in background. You can start reading now!', { duration: 5000 });
+          
+          // Start polling for extraction completion
+          startExtractionPolling(textbookId);
+        } else {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('[Background] Failed to trigger extraction:', errorData);
+          toast.warning('Background extraction failed to start. AI features will use on-demand extraction.', { duration: 5000 });
+        }
+      }).catch(error => {
+        console.error('[Background] Error triggering extraction:', error);
+        toast.warning('Background extraction unavailable. AI features will work on-demand.', { duration: 5000 });
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Server-side extraction failed');
-      }
+    } catch (error) {
+      console.error('[Background] Processing setup failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.warning(`Could not start background processing: ${errorMessage}. You can still use the PDF.`, { duration: 5000 });
+    }
+  };
 
-      const { pages: pageCount } = await response.json();
-      console.log('[Background] Server-side extraction complete:', pageCount, 'pages');
-
-      console.log('[Background] Text extraction complete, detecting chapters...');
-      
-      // Detect chapters first
+  // Poll for extraction completion
+  const startExtractionPolling = (textbookId: string) => {
+    const pollInterval = setInterval(async () => {
       try {
-        const chapterResponse = await fetch('/api/detect-chapters', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ textbookId }),
-        });
-        
-        if (chapterResponse.ok) {
-          const { count } = await chapterResponse.json();
-          console.log(`[Background] Detected ${count} chapters`);
-          toast.success(`Detected ${count} chapters! Starting AI analysis...`);
+        const { data: textbook } = await supabase
+          .from('textbooks')
+          .select('processing_status, processing_progress, total_pages')
+          .eq('id', textbookId)
+          .single();
+
+        if (textbook?.processing_status === 'completed') {
+          clearInterval(pollInterval);
+          toast.success(`Text extraction complete! ${textbook.total_pages} pages ready for AI features.`);
+          
+          // Trigger chapter detection and AI processing
+          try {
+            const chapterResponse = await fetch('/api/detect-chapters', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ textbookId }),
+            });
+            
+            if (chapterResponse.ok) {
+              const { count } = await chapterResponse.json();
+              console.log(`[Background] Detected ${count} chapters`);
+              toast.success(`Detected ${count} chapters!`);
+            }
+          } catch (error) {
+            console.error('[Background] Chapter detection failed:', error);
+          }
+          
+          await loadTextbooks();
+        } else if (textbook?.processing_status === 'failed') {
+          clearInterval(pollInterval);
+          toast.error('Text extraction failed. AI features will use on-demand extraction.');
+          await loadTextbooks();
         }
       } catch (error) {
-        console.error('[Background] Chapter detection failed:', error);
-        // Continue anyway
+        console.error('[Background] Polling error:', error);
       }
-      
-      // Trigger AI processing
-      await triggerAIProcessing(textbookId);
-      pollAIStatus(textbookId);
+    }, 5000); // Poll every 5 seconds
 
-      await loadTextbooks();
-    } catch (error) {
-      console.error('[Background] Processing failed:', error);
-      await supabase
-        .from('textbooks')
-        .update({
-          processing_status: 'failed',
-          processing_error: error instanceof Error ? error.message : 'Unknown error',
-        })
-        .eq('id', textbookId);
-      
-      toast.error('Background processing failed. You can still read the PDF.');
-    }
+    // Clean up after 5 minutes
+    setTimeout(() => clearInterval(pollInterval), 300000);
   };
 
   // Upload textbook (Instant view + background processing)
@@ -388,7 +507,8 @@ export function TextbookProvider({ children }: { children: ReactNode }) {
 
   // Navigation helpers
   const nextPage = () => {
-    if (currentTextbook && currentPage < currentTextbook.total_pages) {
+    const maxPages = actualPageCount || currentTextbook?.total_pages || 1;
+    if (currentPage < maxPages) {
       setCurrentPage(currentPage + 1);
     }
   };
@@ -419,10 +539,12 @@ export function TextbookProvider({ children }: { children: ReactNode }) {
         currentTextbook,
         textbooks,
         currentPage,
+        actualPageCount,
         currentPageData,
         currentAIContent,
         loading,
         setCurrentPage,
+        setActualPageCount,
         loadTextbook,
         loadTextbooks,
         uploadTextbook,

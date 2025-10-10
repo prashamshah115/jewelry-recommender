@@ -1,4 +1,4 @@
-import { Settings, MessageCircle } from 'lucide-react';
+import { Settings, MessageCircle, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 
@@ -44,6 +44,16 @@ export function Header({ currentSection, readingProgress, onChatToggle, chatOpen
           </span>
         </div>
         
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-8 w-8 p-0"
+          onClick={() => window.location.reload()}
+          title="Refresh app if it becomes unresponsive"
+        >
+          <RefreshCw className="h-5 w-5 text-gray-500" />
+        </Button>
+
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
           <Settings className="h-5 w-5 text-gray-500" />
         </Button>

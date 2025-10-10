@@ -59,6 +59,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Session heartbeat - keep session alive and recover from drops
+  useEffect(() => {
+    const heartbeat = setInterval(async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error || !session) {
+          console.warn('[Auth Heartbeat] No valid session, attempting refresh...');
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            console.error('[Auth Heartbeat] Failed to refresh session:', refreshError);
+          } else {
+            console.log('[Auth Heartbeat] Session refreshed successfully');
+          }
+        }
+      } catch (error) {
+        console.error('[Auth Heartbeat] Error:', error);
+      }
+    }, 120000); // Every 2 minutes
+
+    return () => clearInterval(heartbeat);
+  }, []);
+
   const signIn = async (email: string, password: string) => {
     try {
       // First check if user is whitelisted

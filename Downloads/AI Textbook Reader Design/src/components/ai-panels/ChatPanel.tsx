@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { useChat } from '../../contexts/ChatContext';
 import { useTextbook } from '../../contexts/TextbookContext';
 
 export function ChatPanel() {
-  const { messages, loading, sendMessage } = useChat();
+  const { messages, loading, sendMessage, currentContext } = useChat();
   const { currentPage } = useTextbook();
   const [input, setInput] = useState('');
+  const [showContext, setShowContext] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -29,6 +30,41 @@ export function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header with Context Toggle */}
+      <div className="border-b border-border px-3 py-2 flex items-center justify-between">
+        <h3 className="text-xs font-medium text-muted-foreground">AI Chat</h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowContext(!showContext)}
+          className="h-6 px-2 text-xs"
+        >
+          {showContext ? (
+            <>
+              <EyeOff className="w-3 h-3 mr-1" />
+              Hide Context
+            </>
+          ) : (
+            <>
+              <Eye className="w-3 h-3 mr-1" />
+              View Context
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Context Viewer */}
+      {showContext && currentContext && (
+        <div className="border-b border-border px-3 py-2 bg-muted/30">
+          <div className="text-xs text-muted-foreground mb-1 font-medium">
+            Current Context Being Used:
+          </div>
+          <pre className="text-xs bg-background p-2 rounded overflow-auto max-h-32 border border-border">
+            {currentContext}
+          </pre>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">

@@ -1,4 +1,4 @@
-import { Search, User, LogOut, Upload, Trash2, MoreVertical } from 'lucide-react';
+import { Search, User, LogOut, Upload, Trash2, MoreVertical, RefreshCw } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from './ui/select';
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -241,10 +241,19 @@ export function MinimalHeader() {
         </DropdownMenu>
       )}
 
+      {/* Refresh Button */}
+      <button 
+        className="p-1.5 hover:bg-muted rounded-full transition-colors ml-auto"
+        onClick={() => window.location.reload()}
+        title="Refresh app if it becomes unresponsive"
+      >
+        <RefreshCw className="w-4 h-4 text-muted-foreground" />
+      </button>
+
       {/* User Menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="p-1.5 hover:bg-muted rounded-full transition-colors ml-auto">
+          <button className="p-1.5 hover:bg-muted rounded-full transition-colors">
             <User className="w-4 h-4 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>

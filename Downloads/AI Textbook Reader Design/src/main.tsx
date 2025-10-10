@@ -9,19 +9,22 @@ import { AuthProvider } from './contexts/AuthContext';
 import { TextbookProvider } from './contexts/TextbookContext';
 import { NotesProvider } from './contexts/NotesContext';
 import { ChatProvider } from './contexts/ChatContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 createRoot(document.getElementById('root')!).render(
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TextbookProvider>
-        <NotesProvider>
-          <ChatProvider>
-            <App />
-            <Toaster position="top-right" />
-          </ChatProvider>
-        </NotesProvider>
-      </TextbookProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TextbookProvider>
+          <NotesProvider>
+            <ChatProvider>
+              <App />
+              <Toaster position="top-right" />
+            </ChatProvider>
+          </NotesProvider>
+        </TextbookProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
   

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { useTextbook } from './TextbookContext';
 import { toast } from 'sonner';
+import { fetchWithRetry } from '../lib/fetchWithRetry';
 
 interface Note {
   id: string;
@@ -38,12 +39,35 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Helper: Ensure valid session for notes operations
+  const ensureValidSession = async (): Promise<boolean> => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error || !session) {
+        console.warn('[Notes] No valid session found');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('[Notes] Error checking session:', error);
+      return false;
+    }
+  };
+
   // Load all notes for current textbook
-  const loadNotes = useCallback(async () => {
+  const loadNotes = useCallback(async (retryCount = 0) => {
     if (!user || !currentTextbook) return;
 
     try {
       setLoading(true);
+      
+      // Ensure valid session
+      const hasValidSession = await ensureValidSession();
+      if (!hasValidSession && retryCount === 0) {
+        await supabase.auth.refreshSession();
+        return loadNotes(1);
+      }
+
       const { data, error } = await supabase
         .from('user_notes')
         .select('*')
@@ -51,7 +75,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         .eq('textbook_id', currentTextbook.id)
         .order('updated_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Retry on auth errors
+        if (retryCount === 0 && (error.code === '406' || error.message?.includes('JWT'))) {
+          await supabase.auth.refreshSession();
+          return loadNotes(1);
+        }
+        throw error;
+      }
 
       const notesData = (data || []).map(note => ({
         ...note,
@@ -73,11 +104,18 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, [user, currentTextbook, activeNote]);
 
   // Create a new note
-  const createNote = async () => {
+  const createNote = async (retryCount = 0) => {
     if (!user || !currentTextbook) return;
 
     try {
       setSaving(true);
+      
+      // Ensure valid session
+      const hasValidSession = await ensureValidSession();
+      if (!hasValidSession && retryCount === 0) {
+        await supabase.auth.refreshSession();
+        return createNote(1);
+      }
 
       const { data, error } = await supabase
         .from('user_notes')
@@ -90,7 +128,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Retry on auth errors
+        if (retryCount === 0 && (error.code === '406' || error.message?.includes('JWT'))) {
+          await supabase.auth.refreshSession();
+          return createNote(1);
+        }
+        throw error;
+      }
 
       const newNote: Note = {
         ...data,
@@ -116,12 +161,19 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Auto-save function
-  const autoSave = useCallback(async () => {
+  // Auto-save function with retry logic
+  const autoSave = useCallback(async (retryCount = 0) => {
     if (!activeNote || !user) return;
 
     try {
       setSaving(true);
+      
+      // Ensure valid session
+      const hasValidSession = await ensureValidSession();
+      if (!hasValidSession && retryCount === 0) {
+        await supabase.auth.refreshSession();
+        return autoSave(1);
+      }
 
       const { error } = await supabase
         .from('user_notes')
@@ -131,7 +183,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         })
         .eq('id', activeNote.id);
 
-      if (error) throw error;
+      if (error) {
+        // Retry on auth errors
+        if (retryCount === 0 && (error.code === '406' || error.message?.includes('JWT'))) {
+          await supabase.auth.refreshSession();
+          return autoSave(1);
+        }
+        throw error;
+      }
 
       // Update title based on first line
       const newTitle = activeNote.content.split('\n')[0]?.substring(0, 50) || 'Untitled Note';
@@ -142,6 +201,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       ));
     } catch (error) {
       console.error('[Notes] Auto-save failed:', error);
+      if (retryCount === 0) {
+        toast.error('Failed to save note. Please try again.');
+      }
     } finally {
       setSaving(false);
     }
@@ -159,22 +221,37 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setActiveNote({ ...activeNote, title });
   };
 
-  // Delete a note
-  const deleteNote = async (noteId: string) => {
+  // Delete a note with retry logic
+  const deleteNote = async (noteId: string, retryCount = 0) => {
     if (!user) return;
 
     try {
+      // Ensure valid session
+      const hasValidSession = await ensureValidSession();
+      if (!hasValidSession && retryCount === 0) {
+        await supabase.auth.refreshSession();
+        return deleteNote(noteId, 1);
+      }
+
       const { error } = await supabase
         .from('user_notes')
         .delete()
         .eq('id', noteId);
 
-      if (error) throw error;
+      if (error) {
+        // Retry on auth errors
+        if (retryCount === 0 && (error.code === '406' || error.message?.includes('JWT'))) {
+          await supabase.auth.refreshSession();
+          return deleteNote(noteId, 1);
+        }
+        throw error;
+      }
 
-      setNotes(prev => prev.filter(n => n.id !== noteId));
+      const updatedNotes = notes.filter(n => n.id !== noteId);
+      setNotes(updatedNotes);
       
       if (activeNote?.id === noteId) {
-        setActiveNote(notes[0] || null);
+        setActiveNote(updatedNotes.length > 0 ? updatedNotes[0] : null);
       }
 
       toast.success('Note deleted');
