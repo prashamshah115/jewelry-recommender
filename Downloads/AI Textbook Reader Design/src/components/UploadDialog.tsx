@@ -306,16 +306,25 @@ export function UploadDialog({ open, onOpenChange, onUpload }: UploadDialogProps
                   }} />
                 </div>
                 <p style={{ fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>
-                  {stage === 'uploading' && 'Uploading PDF...'}
-                  {stage === 'extracting' && 'Extracting text from pages...'}
-                  {stage === 'saving' && 'Saving to database...'}
+                  {stage === 'uploading' && '📤 Uploading PDF...'}
+                  {stage === 'extracting' && '⚙️ Processing...'}
+                  {stage === 'saving' && '💾 Saving to database...'}
                 </p>
-                <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
+                <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
                   {progress > 0 ? `${Math.round(progress)}%` : 'Please wait...'}
                 </p>
-                <p style={{ fontSize: '11px', color: '#999', marginBottom: '12px' }}>
-                  This may take a few minutes for large PDFs
-                </p>
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#059669',
+                  backgroundColor: '#d1fae5',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  marginBottom: '12px',
+                  border: '1px solid #10b981'
+                }}>
+                  💡 Your PDF will be ready to read in seconds!<br/>
+                  Background processing continues for AI features.
+                </div>
                 <button
                   onClick={handleCancel}
                   style={{
@@ -335,9 +344,13 @@ export function UploadDialog({ open, onOpenChange, onUpload }: UploadDialogProps
             )}
             
             {stage === 'done' && (
-              <div style={{ padding: '16px', backgroundColor: '#f0fdf4', borderRadius: '6px', textAlign: 'center' }}>
-                <p style={{ fontSize: '16px', color: '#16a34a', marginBottom: '4px' }}>✓ Upload Complete!</p>
-                <p style={{ fontSize: '12px', color: '#15803d' }}>Opening your textbook...</p>
+              <div style={{ padding: '20px', backgroundColor: '#f0fdf4', borderRadius: '6px', textAlign: 'center', border: '2px solid #10b981' }}>
+                <div style={{ fontSize: '40px', marginBottom: '8px' }}>✨</div>
+                <p style={{ fontSize: '16px', color: '#16a34a', fontWeight: '600', marginBottom: '4px' }}>PDF Ready to Read!</p>
+                <p style={{ fontSize: '12px', color: '#15803d', marginBottom: '8px' }}>Opening your textbook...</p>
+                <p style={{ fontSize: '11px', color: '#059669', backgroundColor: '#d1fae5', padding: '6px 12px', borderRadius: '4px', display: 'inline-block' }}>
+                  Background processing started for AI features
+                </p>
               </div>
             )}
             

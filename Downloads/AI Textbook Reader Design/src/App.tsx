@@ -4,6 +4,7 @@ import { NotesPanel } from './components/NotesPanel';
 import { PDFReader } from './components/PDFReader';
 import { MinimalAIPane } from './components/MinimalAIPane';
 import { ExplainTooltip } from './components/ExplainTooltip';
+import { UploadProgressBanner } from './components/UploadProgressBanner';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useTextbook } from './contexts/TextbookContext';
@@ -63,6 +64,7 @@ function AppContent() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <MinimalHeader />
+      <UploadProgressBanner />
       
       <div className="flex-1 overflow-hidden">
         <ResizablePanelGroup direction="horizontal" className="h-full">
