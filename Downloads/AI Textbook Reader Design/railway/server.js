@@ -2,6 +2,20 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
+
+// Fix pdf-parse bug by creating dummy test file it tries to read
+const testDir = path.join(__dirname, 'test', 'data');
+const testFile = path.join(testDir, '05-versions-space.pdf');
+if (!fs.existsSync(testDir)) {
+  fs.mkdirSync(testDir, { recursive: true });
+}
+if (!fs.existsSync(testFile)) {
+  fs.writeFileSync(testFile, '%PDF-1.4\n%%EOF\n');
+}
+
+// Now we can safely require pdf-parse
 const pdfParse = require('pdf-parse');
 
 dotenv.config();
