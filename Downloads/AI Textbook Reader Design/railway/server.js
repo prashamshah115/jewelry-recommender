@@ -1,8 +1,8 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
-import pdfParse from 'pdf-parse';
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const { createClient } = require('@supabase/supabase-js');
+const pdfParse = require('pdf-parse');
 
 dotenv.config();
 
@@ -175,4 +175,3 @@ app.listen(PORT, () => {
   console.log(`🚀 PDF Extraction Service running on port ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
 });
-
