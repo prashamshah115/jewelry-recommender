@@ -1,9 +1,9 @@
 import { ApiResult, DatasetType } from "../api/types";
+import { getDiamondImage } from "./diamondImages";
 
-const DEFAULT_RING_IMAGE =
-  "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?auto=format&fit=crop&w=600&q=80";
-const DEFAULT_DIAMOND_IMAGE =
-  "https://images.unsplash.com/photo-1518544801958-efcbf8a7ec10?auto=format&fit=crop&w=600&q=80";
+// Use empty strings to show fallback placeholders instead of Unsplash images with backgrounds
+const DEFAULT_RING_IMAGE = "";
+const DEFAULT_DIAMOND_IMAGE = "";
 
 export interface DiamondDisplay {
   carat: number;
@@ -80,7 +80,10 @@ type PersonalizedResult = {
 
 const formatMatchScore = (score?: number) => {
   if (!score && score !== 0) return 0;
-  return Math.min(100, Math.max(0, Math.round(score * 100)));
+  // Score is already normalized to 0.70-1.0 range from backend
+  // Convert to percentage and ensure it's in the 70-100% range
+  const percentage = Math.round(score * 100);
+  return Math.min(100, Math.max(70, percentage));
 };
 
 const ensureImageUrl = (url?: string): string | undefined => {
@@ -100,6 +103,7 @@ const ensureImageUrl = (url?: string): string | undefined => {
 
 const createDiamondPlaceholder = (metadata: CartierMetadata | DiamondMetadata): DiamondDisplay => {
   const diamondMetadata = metadata as DiamondMetadata;
+  const shape = diamondMetadata.shape ?? diamondMetadata.cut ?? "Round";
   return {
     carat: Number(diamondMetadata.carat_weight ?? 1),
     cut: diamondMetadata.cut ?? (metadata.styles?.[0] ?? "Brilliant"),
@@ -108,8 +112,8 @@ const createDiamondPlaceholder = (metadata: CartierMetadata | DiamondMetadata): 
     price: diamondMetadata.price
       ? Number(diamondMetadata.price)
       : Math.round(((metadata as CartierMetadata).price ?? 5000) * 0.65),
-    image: "", // No diamond images available
-    shape: diamondMetadata.shape ?? diamondMetadata.cut ?? "Round",
+    image: getDiamondImage(shape),
+    shape: shape,
   };
 };
 
@@ -137,14 +141,15 @@ const mapCartierResult = (result: ApiResult<CartierMetadata>): RecommendationDis
 
 const mapDiamondResult = (result: ApiResult<DiamondMetadata>): RecommendationDisplay => {
   const metadata = result.metadata ?? {};
+  const shape = metadata.shape ?? metadata.cut ?? "Round";
   const diamond: DiamondDisplay = {
     carat: Number(metadata.carat_weight ?? 1),
     cut: metadata.cut ?? "Brilliant",
     color: metadata.color ?? "G",
     clarity: metadata.clarity ?? "VS2",
     price: Number(metadata.price ?? 0),
-    image: "", // No diamond images available
-    shape: metadata.shape ?? metadata.cut ?? "Round",
+    image: getDiamondImage(shape),
+    shape: shape,
   };
 
   const setting: SettingDisplay = {
@@ -167,6 +172,7 @@ const mapDiamondResult = (result: ApiResult<DiamondMetadata>): RecommendationDis
 const mapPersonalizedResult = (result: PersonalizedResult): RecommendationDisplay => {
   const diamondMeta = result.diamond ?? {};
   const settingMeta = result.setting ?? {};
+  const shape = diamondMeta.shape ?? diamondMeta.cut ?? "Round";
 
   const diamond: DiamondDisplay = {
     carat: Number(diamondMeta.carat_weight ?? 1),
@@ -174,8 +180,8 @@ const mapPersonalizedResult = (result: PersonalizedResult): RecommendationDispla
     color: diamondMeta.color ?? "G",
     clarity: diamondMeta.clarity ?? "VS2",
     price: Number(diamondMeta.price ?? 0),
-    image: "", // No diamond images available
-    shape: diamondMeta.shape ?? diamondMeta.cut ?? "Round",
+    image: getDiamondImage(shape),
+    shape: shape,
   };
 
   const setting: SettingDisplay = {

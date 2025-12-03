@@ -372,6 +372,23 @@ class PersonalizedRecommender:
         
         return min(1.0, boost)  # Cap at 1.0
     
+    def _normalize_score(self, raw_score: float) -> float:
+        """
+        Normalize score to a more favorable range.
+        Maps 0.0-1.0 to approximately 70-100% for better user perception.
+        
+        Args:
+            raw_score: Raw score in 0.0-1.0 range
+            
+        Returns:
+            Normalized score in 0.70-1.0 range
+        """
+        # Minimum score floor: 0.70 (70%)
+        # Maximum: 1.0 (100%)
+        # Use linear scaling with floor to ensure all valid matches show at least 70%
+        normalized = 0.70 + (raw_score * 0.30)
+        return min(1.0, max(0.70, normalized))
+    
     def _score_combination(
         self,
         query_vec: np.ndarray,
@@ -455,7 +472,10 @@ class PersonalizedRecommender:
             user_weight * user_alignment
         )
         
-        return final_score
+        # Normalize score to a more favorable range (70-100%)
+        normalized_score = self._normalize_score(final_score)
+        
+        return normalized_score
     
     def _quick_compatibility_check(
         self,
@@ -940,4 +960,3 @@ class PersonalizedRecommender:
                 selected.append(remaining.pop(best_idx))
         
         return selected
-

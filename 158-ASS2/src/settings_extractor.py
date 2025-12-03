@@ -82,3 +82,4 @@ if __name__ == '__main__':
     print(f"Price range: ${settings_data['stats']['price_range']['min']:.2f} - ${settings_data['stats']['price_range']['max']:.2f}")
     print(f"Saved to: {output_path}")
 
+

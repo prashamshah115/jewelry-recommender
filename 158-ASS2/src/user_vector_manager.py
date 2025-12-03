@@ -413,4 +413,3 @@ class UserVectorManager:
         self._save_user_data()
         
         return initialized_vector
-

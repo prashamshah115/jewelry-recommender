@@ -66,3 +66,4 @@ def validate_query(query_text: Optional[str], image_bytes: Optional[bytes]) -> b
 
 
 
+
